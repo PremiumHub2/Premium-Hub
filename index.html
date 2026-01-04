@@ -641,6 +641,62 @@
 <main id="app"></main>
 
 <script>
+// ===== IndexedDB 설정 =====
+let db;
+const DB_NAME = 'PremiumHubDB';
+const DB_VERSION = 1;
+const STORE_NAME = 'videos';
+
+function initDB(){
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      db = request.result;
+      resolve(db);
+    };
+    
+    request.onupgradeneeded = (e) => {
+      db = e.target.result;
+      if(!db.objectStoreNames.contains(STORE_NAME)){
+        db.createObjectStore(STORE_NAME, {keyPath: 'id'});
+      }
+    };
+  });
+}
+
+function saveVideoToDB(video){
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.put(video);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function getAllVideosFromDB(){
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.getAll();
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function deleteVideoFromDB(id){
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// ===== Age Gate =====
 function enterSite(){ 
   localStorage.setItem('adult_ok','1'); 
   ageGate.style.display='none'; 
@@ -650,9 +706,9 @@ function exitSite(){
 }
 if(localStorage.getItem('adult_ok')==='1') enterSite();
 
-// Admin mode
+// ===== Admin Mode =====
 let isAdmin = localStorage.getItem('admin_mode')==='1';
-const ADMIN_PASSWORD = 'admin123'; // 비밀번호 변경 가능
+const ADMIN_PASSWORD = 'admin123';
 
 function toggleAdmin(){
   if(isAdmin){
@@ -661,10 +717,9 @@ function toggleAdmin(){
     adminIcon.classList.remove('active');
     uploadBtn.classList.remove('show');
     alert('어드민 모드 해제됨');
-    // 화면 새로고침하여 삭제 버튼 숨김
     if(document.querySelector('.player')){
-      const currentId = videos.find(v => document.querySelector('.player-video')?.src.includes(v.src))?.id;
-      if(currentId) renderWatch(currentId);
+      const currentVideo = videos.find(v => document.querySelector('.player-video')?.src === v.blobUrl);
+      if(currentVideo) renderWatch(currentVideo.id);
     }else{
       renderHome();
     }
@@ -676,10 +731,9 @@ function toggleAdmin(){
       adminIcon.classList.add('active');
       uploadBtn.classList.add('show');
       alert('어드민 모드 활성화!');
-      // 화면 새로고침하여 삭제 버튼 표시
       if(document.querySelector('.player')){
-        const currentId = videos.find(v => document.querySelector('.player-video')?.src.includes(v.src))?.id;
-        if(currentId) renderWatch(currentId);
+        const currentVideo = videos.find(v => document.querySelector('.player-video')?.src === v.blobUrl);
+        if(currentVideo) renderWatch(currentVideo.id);
       }else{
         renderHome();
       }
@@ -696,18 +750,28 @@ function updateAdminUI(){
   }
 }
 
-updateAdminUI();
+// ===== Video Management =====
+let videos = [];
+let videoBlobCache = {}; // Blob URL 캐시
 
-let videos = JSON.parse(localStorage.getItem('videos')||'[]');
-if(videos.length===0){
-  videos=[
-    {id:1,title:'프리미엄 샘플 비디오 #1',src:'videos/sample1.mp4',views:125000,duration:'12:34'},
-    {id:2,title:'HD 샘플 비디오 #2',src:'videos/sample2.mp4',views:98000,duration:'15:42'},
-    {id:3,title:'인기 샘플 비디오 #3',src:'videos/sample3.mp4',views:204000,duration:'08:15'}
-  ];
+async function loadVideos(){
+  videos = await getAllVideosFromDB();
+  
+  // Blob URL 재생성
+  for(let video of videos){
+    if(video.fileData){
+      const blob = new Blob([video.fileData], {type: video.fileType});
+      videoBlobCache[video.id] = URL.createObjectURL(blob);
+      video.blobUrl = videoBlobCache[video.id];
+    }
+  }
 }
 
-function save(){ localStorage.setItem('videos',JSON.stringify(videos)); }
+function formatNumber(num){
+  if(num>=1000000) return (num/1000000).toFixed(1)+'M';
+  if(num>=1000) return (num/1000).toFixed(1)+'K';
+  return num.toString();
+}
 
 function go(page,id){
   document.querySelectorAll('.cat-btn').forEach(b=>b.classList.remove('active'));
@@ -731,12 +795,6 @@ function filterCategory(cat){
   renderHome();
 }
 
-function formatNumber(num){
-  if(num>=1000000) return (num/1000000).toFixed(1)+'M';
-  if(num>=1000) return (num/1000).toFixed(1)+'K';
-  return num.toString();
-}
-
 function renderHome(){
   app.innerHTML=`
     <h2>추천 비디오</h2>
@@ -744,7 +802,7 @@ function renderHome(){
       <div class='card' onclick="go('watch',${v.id})">
         ${isAdmin ? `<div class='delete-btn' onclick="event.stopPropagation(); deleteVideo(${v.id})">🗑️ 삭제</div>` : ''}
         <div class='thumb'>
-          <video src='${v.src}' muted preload="metadata"></video>
+          <video src='${v.blobUrl}' muted preload="metadata"></video>
           <div class='duration'>${v.duration||'10:00'}</div>
         </div>
         <div class='info'>
@@ -758,17 +816,17 @@ function renderHome(){
     </div>`;
 }
 
-function renderWatch(id){
+async function renderWatch(id){
   const v=videos.find(x=>x.id===id); 
   if(!v) return;
   v.views++; 
-  save();
+  await saveVideoToDB(v);
   
   const others=videos.filter(x=>x.id!==id).slice(0,6);
   
   app.innerHTML=`
     <div class='player'>
-      <video src='${v.src}' class='player-video' controls autoplay></video>
+      <video src='${v.blobUrl}' class='player-video' controls autoplay></video>
       <div class='player-info'>
         <h2>${v.title}</h2>
         <div class='player-stats'>
@@ -795,7 +853,7 @@ function renderWatch(id){
         <div class='card' onclick="go('watch',${v2.id})">
           ${isAdmin ? `<div class='delete-btn' onclick="event.stopPropagation(); deleteVideo(${v2.id})">🗑️ 삭제</div>` : ''}
           <div class='thumb'>
-            <video src='${v2.src}' muted preload="metadata"></video>
+            <video src='${v2.blobUrl}' muted preload="metadata"></video>
             <div class='duration'>${v2.duration||'10:00'}</div>
           </div>
           <div class='info'>
@@ -817,7 +875,7 @@ function renderAdmin(){
       <div class='upload-area' id='uploadArea'>
         <div class='upload-icon'>🎬</div>
         <div class='upload-text'>비디오 파일을 드래그하거나 클릭하세요</div>
-        <div class='upload-subtext'>MP4, WebM, MOV 파일 지원</div>
+        <div class='upload-subtext'>MP4, WebM, MOV 파일 지원 (새로고침해도 유지됨!)</div>
         <input type='file' id='fileInput' accept='video/*' style='display:none'>
       </div>
       
@@ -836,9 +894,7 @@ function renderAdmin(){
       <div class='divider'></div>
       
       <h2>⚙️ 데이터 관리</h2>
-      <button class='btn btn-secondary' onclick='exportBackup()'>백업 내보내기</button>
-      <input type='file' id='importFile' style='display:none' onchange='importBackup(event)'>
-      <button class='btn btn-secondary' onclick='document.getElementById("importFile").click()'>백업 가져오기</button>
+      <button class='btn btn-secondary' onclick='clearAllVideos()'>모든 비디오 삭제</button>
     </div>`;
   
   setupDragAndDrop();
@@ -846,7 +902,7 @@ function renderAdmin(){
 
 let currentFile = null;
 let currentDuration = '';
-let currentBlobUrl = '';
+let currentPreviewUrl = '';
 
 function setupDragAndDrop(){
   const uploadArea = document.getElementById('uploadArea');
@@ -889,14 +945,12 @@ function setupDragAndDrop(){
     uploadArea.classList.add('has-file');
     filePreview.classList.add('show');
     
-    // Blob URL 생성
-    if(currentBlobUrl){
-      URL.revokeObjectURL(currentBlobUrl);
+    if(currentPreviewUrl){
+      URL.revokeObjectURL(currentPreviewUrl);
     }
-    currentBlobUrl = URL.createObjectURL(file);
-    previewVideo.src = currentBlobUrl;
+    currentPreviewUrl = URL.createObjectURL(file);
+    previewVideo.src = currentPreviewUrl;
     
-    // 비디오 메타데이터 로드
     previewVideo.addEventListener('loadedmetadata', ()=>{
       const duration = previewVideo.duration;
       currentDuration = formatDuration(duration);
@@ -922,7 +976,6 @@ function setupDragAndDrop(){
         </div>
       `;
       
-      // 제목 자동 채우기 (파일명에서 확장자 제거)
       if(!document.getElementById('title').value){
         document.getElementById('title').value = file.name.replace(/\.[^/.]+$/, '');
       }
@@ -943,7 +996,7 @@ function setupDragAndDrop(){
   }
 }
 
-function uploadVideo(){
+async function uploadVideo(){
   if(!currentFile){
     alert('파일을 선택해주세요.');
     return;
@@ -951,40 +1004,61 @@ function uploadVideo(){
   
   const title = document.getElementById('title').value || currentFile.name;
   
-  // 비디오를 videos에 추가 (Blob URL 사용)
-  videos.push({
-    id: Date.now(),
-    title: title,
-    src: currentBlobUrl,
-    duration: currentDuration,
-    views: 0,
-    isBlob: true // Blob URL임을 표시
-  });
+  // 파일을 ArrayBuffer로 읽기
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const fileData = e.target.result;
+    
+    // IndexedDB에 저장할 비디오 객체
+    const video = {
+      id: Date.now(),
+      title: title,
+      duration: currentDuration,
+      views: 0,
+      fileData: fileData,
+      fileType: currentFile.type,
+      fileName: currentFile.name
+    };
+    
+    // IndexedDB에 저장
+    await saveVideoToDB(video);
+    
+    // Blob URL 생성
+    const blob = new Blob([fileData], {type: currentFile.type});
+    const blobUrl = URL.createObjectURL(blob);
+    videoBlobCache[video.id] = blobUrl;
+    video.blobUrl = blobUrl;
+    
+    // videos 배열에 추가
+    videos.push(video);
+    
+    alert('✅ 업로드 완료!\n\n새로고침해도 비디오가 유지됩니다! 🎉');
+    go('home');
+  };
   
-  save();
-  alert('✅ 업로드 완료!\n\n⚠️ 주의: 페이지를 새로고침하면 업로드한 비디오는 사라집니다.\n영구적으로 저장하려면 백업 기능을 사용하세요.');
-  go('home');
+  reader.readAsArrayBuffer(currentFile);
 }
 
-function deleteVideo(id){
+async function deleteVideo(id){
   const video = videos.find(v => v.id === id);
   if(!video) return;
   
   if(confirm(`"${video.title}"을(를) 정말 삭제하시겠습니까?`)){
-    // Blob URL인 경우 메모리 해제
-    if(video.isBlob && video.src.startsWith('blob:')){
-      URL.revokeObjectURL(video.src);
+    // Blob URL 해제
+    if(videoBlobCache[id]){
+      URL.revokeObjectURL(videoBlobCache[id]);
+      delete videoBlobCache[id];
     }
+    
+    // IndexedDB에서 삭제
+    await deleteVideoFromDB(id);
     
     // videos 배열에서 제거
     videos = videos.filter(v => v.id !== id);
-    save();
     
-    // 재생 페이지에서 삭제한 경우 홈으로 이동
     if(document.querySelector('.player')){
       go('home');
     }else{
-      // 홈에서 삭제한 경우 화면 새로고침
       renderHome();
     }
     
@@ -992,22 +1066,25 @@ function deleteVideo(id){
   }
 }
 
-function exportBackup(){
-  const blob=new Blob([JSON.stringify(videos,null,2)],{type:'application/json'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download='video_backup_'+Date.now()+'.json';
-  a.click();
-}
-
-function importBackup(e){
-  const r=new FileReader();
-  r.onload=()=>{
-    videos=JSON.parse(r.result);
-    save();
-    go('home');
-  };
-  r.readAsText(e.target.files[0]);
+async function clearAllVideos(){
+  if(!confirm('정말로 모든 비디오를 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다!')){
+    return;
+  }
+  
+  // 모든 Blob URL 해제
+  for(let id in videoBlobCache){
+    URL.revokeObjectURL(videoBlobCache[id]);
+  }
+  videoBlobCache = {};
+  
+  // IndexedDB 초기화
+  const transaction = db.transaction([STORE_NAME], 'readwrite');
+  const store = transaction.objectStore(STORE_NAME);
+  await store.clear();
+  
+  videos = [];
+  alert('✅ 모든 비디오가 삭제되었습니다.');
+  go('home');
 }
 
 // Search functionality
@@ -1021,7 +1098,7 @@ searchInput.addEventListener('input', (e)=>{
         <div class='card' onclick="go('watch',${v.id})">
           ${isAdmin ? `<div class='delete-btn' onclick="event.stopPropagation(); deleteVideo(${v.id})">🗑️ 삭제</div>` : ''}
           <div class='thumb'>
-            <video src='${v.src}' muted preload="metadata"></video>
+            <video src='${v.blobUrl}' muted preload="metadata"></video>
             <div class='duration'>${v.duration||'10:00'}</div>
           </div>
           <div class='info'>
@@ -1037,7 +1114,15 @@ searchInput.addEventListener('input', (e)=>{
   }
 });
 
-go('home');
+// Initialize
+async function init(){
+  await initDB();
+  await loadVideos();
+  updateAdminUI();
+  go('home');
+}
+
+init();
 </script>
 </body>
 </html>
