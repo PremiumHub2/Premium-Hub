@@ -418,6 +418,33 @@
       align-items:center;
       gap:8px;
     }
+    .like-btn{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      padding:10px 20px;
+      background:var(--panel-hover);
+      border:2px solid var(--border);
+      border-radius:6px;
+      color:var(--sub);
+      font-size:14px;
+      font-weight:700;
+      cursor:pointer;
+      transition:all .2s;
+      margin-left:auto;
+    }
+    .like-btn:hover{
+      border-color:var(--primary);
+      color:var(--primary);
+    }
+    .like-btn.liked{
+      background:var(--primary);
+      border-color:var(--primary);
+      color:#000;
+    }
+    .like-btn .icon{
+      font-size:18px;
+    }
     
     .related{
       margin-top:40px;
@@ -603,11 +630,11 @@
   <div class="gate-box">
     <div class="warning-icon">⚠️</div>
     <h1>Adult Content Warning</h1>
-    <p>이 웹사이트는 성인 대상 콘텐츠를 포함하고 있습니다.</p>
-    <p>만 18세 이상만 이용할 수 있습니다.</p>
+    <p>이 웹사이트는 안정대 인원 대상 콘텐츠를 포함하고 있습니다.</p>
+    <p>만 1972세 이상만 이용할 수 있습니다.</p>
     <div class="gate-actions">
-      <button onclick="enterSite()">만 18세 이상입니다</button>
-      <button onclick="exitSite()">나가기</button>
+      <button onclick="enterSite()">어쩌라고 꺼져</button>
+      <button onclick="exitSite()">안녕히계세요</button>
     </div>
   </div>
 </div>
