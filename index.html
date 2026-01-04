@@ -390,6 +390,21 @@
       max-height:75vh;
       background:#000;
     }
+    /* 전체화면에서 컨트롤 자동 숨김 */
+    .player-video:fullscreen::-webkit-media-controls-panel {
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .player-video:fullscreen:hover::-webkit-media-controls-panel {
+      opacity: 1;
+    }
+    .player-video:-webkit-full-screen::-webkit-media-controls-panel {
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .player-video:-webkit-full-screen:hover::-webkit-media-controls-panel {
+      opacity: 1;
+    }
     .player-info{
       padding:24px;
     }
@@ -638,10 +653,10 @@
   <div class="gate-box">
     <div class="warning-icon">⚠️</div>
     <h1>Adult Content Warning</h1>
-    <p>이 웹사이트는 안정대 인원 대상 콘텐츠를 포함하고 있습니다.</p>
+    <p>이 웹사이트는 안정대 대상 콘텐츠를 포함하고 있습니다.</p>
     <p>만 1972세 이상만 이용할 수 있습니다.</p>
     <div class="gate-actions">
-      <button onclick="enterSite()">어쩌라고요</button>
+      <button onclick="enterSite()">어쩌라구요</button>
       <button onclick="exitSite()">안녕히계세요</button>
     </div>
   </div>
@@ -893,7 +908,7 @@ async function renderWatch(id){
   
   app.innerHTML=`
     <div class='player'>
-      <video src='${v.blobUrl}' class='player-video' controls autoplay></video>
+      <video src='${v.blobUrl}' class='player-video' controls autoplay controlsList="nodownload"></video>
       <div class='player-info'>
         <h2>${v.title}</h2>
         <div class='player-stats'>
@@ -932,6 +947,39 @@ async function renderWatch(id){
         </div>`).join('')}
       </div>
     </div>`;
+  
+  // 비디오 클릭으로 재생/정지 되는 것 방지
+  const playerVideo = document.querySelector('.player-video');
+  if(playerVideo){
+    playerVideo.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    
+    // 전체화면에서 화면 클릭 시 컨트롤 숨김
+    let controlsTimeout;
+    playerVideo.addEventListener('fullscreenchange', () => {
+      if(document.fullscreenElement === playerVideo){
+        // 전체화면 진입
+        playerVideo.style.cursor = 'none';
+        
+        playerVideo.addEventListener('mousemove', () => {
+          playerVideo.style.cursor = 'default';
+          clearTimeout(controlsTimeout);
+          controlsTimeout = setTimeout(() => {
+            playerVideo.style.cursor = 'none';
+          }, 2000);
+        });
+        
+        playerVideo.addEventListener('click', () => {
+          playerVideo.style.cursor = 'none';
+        });
+      } else {
+        // 전체화면 종료
+        playerVideo.style.cursor = 'default';
+      }
+    });
+  }
 }
 
 function renderAdmin(){
