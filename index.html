@@ -29,7 +29,6 @@
     a{ color:var(--text); text-decoration:none; cursor:pointer; transition:color .2s; }
     a:hover{ color:var(--primary); }
 
-    /* ===== Age Gate ===== */
     #ageGate{
       position:fixed; inset:0; z-index:9999;
       display:flex; align-items:center; justify-content:center;
@@ -101,7 +100,6 @@
       color:var(--text);
     }
 
-    /* ===== Header ===== */
     header{
       position:sticky; 
       top:0; 
@@ -202,7 +200,6 @@
       box-shadow:0 4px 12px rgba(255,144,0,.4);
     }
 
-    /* ===== Categories ===== */
     .categories{
       background:var(--panel);
       border-bottom:1px solid var(--border);
@@ -236,7 +233,6 @@
       transform:translateY(-1px);
     }
 
-    /* ===== Main ===== */
     main{
       max-width:1400px;
       margin:0 auto;
@@ -259,7 +255,6 @@
       border-radius:2px;
     }
 
-    /* ===== Video Grid ===== */
     .grid{
       display:grid;
       grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
@@ -343,7 +338,6 @@
       display:none;
     }
     
-    /* ===== Delete Button ===== */
     .delete-btn{
       position:absolute;
       top:8px;
@@ -385,7 +379,6 @@
       color:#000;
     }
 
-    /* ===== Player ===== */
     .player{
       background:var(--panel);
       border-radius:12px;
@@ -412,6 +405,7 @@
       font-size:14px;
       padding-bottom:20px;
       border-bottom:1px solid var(--border);
+      flex-wrap:wrap;
     }
     .stat-item{
       display:flex;
@@ -450,7 +444,6 @@
       margin-top:40px;
     }
 
-    /* ===== Admin ===== */
     .admin-box{
       max-width:700px;
       margin:0 auto;
@@ -512,13 +505,21 @@
       background:var(--border);
       box-shadow:none;
     }
+    .btn-danger{
+      background:transparent;
+      color:#ff4444;
+      border:2px solid #ff4444;
+    }
+    .btn-danger:hover{
+      background:#ff4444;
+      color:#000;
+    }
     .divider{
       margin:32px 0;
       border:none;
       border-top:1px solid var(--border);
     }
     
-    /* ===== Drag & Drop ===== */
     .upload-area{
       border:3px dashed var(--border);
       border-radius:12px;
@@ -603,6 +604,14 @@
       color:var(--text);
       font-weight:600;
     }
+    .preview-actions{
+      display:flex;
+      gap:12px;
+      margin-top:16px;
+    }
+    .preview-actions button{
+      flex:1;
+    }
 
     @media(max-width:768px){
       .header-content{ 
@@ -625,7 +634,6 @@
 </head>
 <body>
 
-<!-- Age Gate -->
 <div id="ageGate">
   <div class="gate-box">
     <div class="warning-icon">⚠️</div>
@@ -633,7 +641,7 @@
     <p>이 웹사이트는 안정대 인원 대상 콘텐츠를 포함하고 있습니다.</p>
     <p>만 1972세 이상만 이용할 수 있습니다.</p>
     <div class="gate-actions">
-      <button onclick="enterSite()">어쩌라고 꺼져</button>
+      <button onclick="enterSite()">어쩌라고요</button>
       <button onclick="exitSite()">안녕히계세요</button>
     </div>
   </div>
@@ -668,10 +676,10 @@
 <main id="app"></main>
 
 <script>
-// ===== IndexedDB 설정 =====
+// ===== IndexedDB 설정 (버전 변경 없이 안정적으로 유지) =====
 let db;
 const DB_NAME = 'PremiumHubDB';
-const DB_VERSION = 1;
+const DB_VERSION = 1; // 절대 변경하지 마세요! 변경하면 기존 데이터 날아갑니다
 const STORE_NAME = 'videos';
 
 function initDB(){
@@ -723,7 +731,6 @@ function deleteVideoFromDB(id){
   });
 }
 
-// ===== Age Gate =====
 function enterSite(){ 
   localStorage.setItem('adult_ok','1'); 
   ageGate.style.display='none'; 
@@ -733,7 +740,6 @@ function exitSite(){
 }
 if(localStorage.getItem('adult_ok')==='1') enterSite();
 
-// ===== Admin Mode =====
 let isAdmin = localStorage.getItem('admin_mode')==='1';
 const ADMIN_PASSWORD = 'admin123';
 
@@ -777,21 +783,54 @@ function updateAdminUI(){
   }
 }
 
-// ===== Video Management =====
 let videos = [];
-let videoBlobCache = {}; // Blob URL 캐시
+let videoBlobCache = {};
 
 async function loadVideos(){
   videos = await getAllVideosFromDB();
   
-  // Blob URL 재생성
   for(let video of videos){
     if(video.fileData){
       const blob = new Blob([video.fileData], {type: video.fileType});
       videoBlobCache[video.id] = URL.createObjectURL(blob);
       video.blobUrl = videoBlobCache[video.id];
     }
+    if(video.likes === undefined){
+      video.likes = 0;
+    }
   }
+}
+
+function getLikedVideos(){
+  const liked = localStorage.getItem('liked_videos');
+  return liked ? JSON.parse(liked) : [];
+}
+
+function isVideoLiked(videoId){
+  const likedVideos = getLikedVideos();
+  return likedVideos.includes(videoId);
+}
+
+async function toggleLike(videoId){
+  const video = videos.find(v => v.id === videoId);
+  if(!video) return;
+  
+  const likedVideos = getLikedVideos();
+  const isLiked = likedVideos.includes(videoId);
+  
+  if(isLiked){
+    video.likes = Math.max(0, video.likes - 1);
+    const index = likedVideos.indexOf(videoId);
+    likedVideos.splice(index, 1);
+  }else{
+    video.likes++;
+    likedVideos.push(videoId);
+  }
+  
+  localStorage.setItem('liked_videos', JSON.stringify(likedVideos));
+  await saveVideoToDB(video);
+  
+  renderWatch(videoId);
 }
 
 function formatNumber(num){
@@ -850,6 +889,7 @@ async function renderWatch(id){
   await saveVideoToDB(v);
   
   const others=videos.filter(x=>x.id!==id).slice(0,6);
+  const isLiked = isVideoLiked(v.id);
   
   app.innerHTML=`
     <div class='player'>
@@ -862,13 +902,13 @@ async function renderWatch(id){
             <span>${formatNumber(v.views)} views</span>
           </div>
           <div class='stat-item'>
-            <span>👍</span>
-            <span>${Math.floor(Math.random()*1000)+100}</span>
-          </div>
-          <div class='stat-item'>
             <span>📅</span>
             <span>${Math.floor(Math.random()*7)+1}일 전</span>
           </div>
+          <button class='like-btn ${isLiked ? "liked" : ""}' onclick='toggleLike(${v.id})'>
+            <span class='icon'>${isLiked ? "❤️" : "🤍"}</span>
+            <span>${formatNumber(v.likes || 0)}</span>
+          </button>
           ${isAdmin ? `<button class='delete-btn-player' onclick='deleteVideo(${v.id})'>🗑️ 삭제</button>` : ''}
         </div>
       </div>
@@ -909,6 +949,10 @@ function renderAdmin(){
       <div class='file-preview' id='filePreview'>
         <video class='preview-video' id='previewVideo' controls></video>
         <div class='file-info' id='fileInfo'></div>
+        <div class='preview-actions'>
+          <button class='btn btn-danger' onclick='cancelFileSelection()'>취소</button>
+          <button class='btn btn-secondary' onclick='reselectFile()'>다시 선택</button>
+        </div>
       </div>
       
       <div class='form-group'>
@@ -1023,6 +1067,33 @@ function setupDragAndDrop(){
   }
 }
 
+function cancelFileSelection(){
+  const uploadArea = document.getElementById('uploadArea');
+  const fileInput = document.getElementById('fileInput');
+  const filePreview = document.getElementById('filePreview');
+  const previewVideo = document.getElementById('previewVideo');
+  const publishBtn = document.getElementById('publishBtn');
+  
+  if(currentPreviewUrl){
+    URL.revokeObjectURL(currentPreviewUrl);
+  }
+  
+  currentFile = null;
+  currentDuration = '';
+  currentPreviewUrl = '';
+  
+  uploadArea.classList.remove('has-file');
+  filePreview.classList.remove('show');
+  previewVideo.src = '';
+  fileInput.value = '';
+  document.getElementById('title').value = '';
+  publishBtn.disabled = true;
+}
+
+function reselectFile(){
+  document.getElementById('fileInput').click();
+}
+
 async function uploadVideo(){
   if(!currentFile){
     alert('파일을 선택해주세요.');
@@ -1031,34 +1102,31 @@ async function uploadVideo(){
   
   const title = document.getElementById('title').value || currentFile.name;
   
-  // 파일을 ArrayBuffer로 읽기
   const reader = new FileReader();
   reader.onload = async (e) => {
     const fileData = e.target.result;
     
-    // IndexedDB에 저장할 비디오 객체
     const video = {
       id: Date.now(),
       title: title,
       duration: currentDuration,
       views: 0,
+      likes: 0,
       fileData: fileData,
       fileType: currentFile.type,
       fileName: currentFile.name
     };
     
-    // IndexedDB에 저장
     await saveVideoToDB(video);
     
-    // Blob URL 생성
     const blob = new Blob([fileData], {type: currentFile.type});
     const blobUrl = URL.createObjectURL(blob);
     videoBlobCache[video.id] = blobUrl;
     video.blobUrl = blobUrl;
     
-    // videos 배열에 추가
     videos.push(video);
     
+    cancelFileSelection();
     alert('✅ 업로드 완료!\n\n새로고침해도 비디오가 유지됩니다! 🎉');
     go('home');
   };
@@ -1071,16 +1139,13 @@ async function deleteVideo(id){
   if(!video) return;
   
   if(confirm(`"${video.title}"을(를) 정말 삭제하시겠습니까?`)){
-    // Blob URL 해제
     if(videoBlobCache[id]){
       URL.revokeObjectURL(videoBlobCache[id]);
       delete videoBlobCache[id];
     }
     
-    // IndexedDB에서 삭제
     await deleteVideoFromDB(id);
     
-    // videos 배열에서 제거
     videos = videos.filter(v => v.id !== id);
     
     if(document.querySelector('.player')){
@@ -1098,13 +1163,11 @@ async function clearAllVideos(){
     return;
   }
   
-  // 모든 Blob URL 해제
   for(let id in videoBlobCache){
     URL.revokeObjectURL(videoBlobCache[id]);
   }
   videoBlobCache = {};
   
-  // IndexedDB 초기화
   const transaction = db.transaction([STORE_NAME], 'readwrite');
   const store = transaction.objectStore(STORE_NAME);
   await store.clear();
@@ -1114,7 +1177,6 @@ async function clearAllVideos(){
   go('home');
 }
 
-// Search functionality
 searchInput.addEventListener('input', (e)=>{
   const query=e.target.value.toLowerCase();
   if(query){
@@ -1141,7 +1203,6 @@ searchInput.addEventListener('input', (e)=>{
   }
 });
 
-// Initialize
 async function init(){
   await initDB();
   await loadVideos();
